@@ -99,6 +99,46 @@ class MapBuilder:
         gradients = np.sqrt(np.sum(Dx**2, axis=1) + np.sum(Dy**2, axis=1))  
         return gradients
 
+    def get_gradient_map_sparse(self, xy=None, resolution=200):
+        """
+        for each pixel, the gradient is calculated by
+        Dx(y) = (B(y + (w, 0)) - B(y - (w, 0)))/ 2w 
+        Dy(y) = (B(y + (0, h)) - B(y - (0, h)))/ 2h 
+        D(y) = squrt(‖Dx(y)‖**2 + ‖Dy(y)‖**2)
+        
+        where y is a point in the 2D projection space and w and h are a pixel's width and height, respectively.
+        B is ppinv.inverse_transform() function.
+        """
+    
+        xy_padding = []
+        collection = set()
+        for (x, y) in xy:
+            collection.add((x, y))
+            collection.add((x-1, y))
+            collection.add((x+1, y))
+            collection.add((x, y-1))
+            collection.add((x, y+1))
+        
+        xy_padding = np.array(list(collection))
+        xy_padding_nd = self.get_nd(xy_padding/ resolution)
+
+        dense_map = np.zeros((resolution+2, resolution+2))
+        for i, (x, y) in enumerate(xy_padding):
+            dense_map[x+1, y+1] = xy_padding_nd[i]
+
+        Dx = (dense_map[2:, 1:-1] - dense_map[:-2, 1:-1]) 
+        Dy = (dense_map[1:-1, 2:] - dense_map[1:-1, :-2])
+
+        w = 1/ resolution
+        Dx = Dx / (2 * w)
+        Dy = Dy / (2 * w)
+        # get the gradient norm
+        D = np.sqrt(np.sum(Dx**2, axis=1) + np.sum(Dy**2, axis=1))
+        ## get only xy in the original xy
+        gradients = D[np.array(list(xy))]                               
+        return gradients
+
+
     def get_gradient_new(self, grid=100):
 
         x_max, x_min = 1, 0
@@ -221,7 +261,7 @@ class MapBuilder:
         return main, conf
     
     def get_non_label_content(self, content:str, spare_map, resolution:int):
-        space2d = spare_map[:, :2]
+        space2d = spare_map[:, :2].astype(int)
         labels = spare_map[:, 3]
         
         scaled_2d = space2d / resolution
@@ -458,6 +498,8 @@ class MapBuilder:
         ax.set_yticks([])
         # aspect square
         ax.set_aspect('equal')
+        ax = self.plot_boundary(ax=ax, fast=fast, grid=grid)
+        
         return ax, sparse
     
     def plot_round_label_map(self, ax=None, cmap='tab10', grid=200, fast=False, initial_resolution=32):
