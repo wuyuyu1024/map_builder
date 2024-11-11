@@ -192,17 +192,18 @@ class MapBuilder:
     
     def get_deepfool(self, xy, labels=None):
         assert isinstance(self.clf, nn.Module)
+        device = 'cuda' if next(self.clf.parameters()).is_cuda else 'cpu'
         inverted_grid = self.get_nd(xy)
-        device = self.clf.linear.weight.device
         inverted_grid = T.tensor(inverted_grid).float().to(device)
         (
             perturbed,
             orig_class,
             naive_wormhole_data,
         ) = (
-            deepfool_batch(self.clf, inverted_grid, labels)
-            if inverted_grid.is_cuda
-            else deepfool_minibatches(self.clf, inverted_grid, labels, batch_size=1000)
+            # deepfool_batch(self.clf, inverted_grid, labels)
+            # if inverted_grid.is_cuda
+            # else 
+            deepfool_minibatches(model=self.clf, input_batch=inverted_grid, labels=labels, batch_size=8)
         )
 
         dist_map = (
@@ -468,7 +469,7 @@ class MapBuilder:
         ax.set_xticks([])
         ax.set_yticks([])
         # aspect square
-        ax.set_aspect('equal')
+        # ax.set_aspect('equal')
         return ax, sparse
 
     
@@ -497,27 +498,27 @@ class MapBuilder:
         ax.set_xticks([])
         ax.set_yticks([])
         # aspect square
-        ax.set_aspect('equal')
+        # ax.set_aspect('equal')
         ax = self.plot_boundary(ax=ax, fast=fast, grid=grid)
         
         return ax, sparse
     
-    def plot_round_label_map(self, ax=None, cmap='tab10', grid=200, fast=False, initial_resolution=32):
-        labels, alpha, sparse = self.get_map(content='label_roundtrip', fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution, )
-        if ax is None:
-            ax = plt.gca()
-        labels_normlized = labels/self.clf.classes_.max() if self.clf.classes_.max() > 9 else labels/9
-        CMAP = colormaps[cmap]
-        map = CMAP(labels_normlized)
-        ax.imshow(map, interpolation='nearest', aspect='auto', extent=[0, 1, 0, 1])
-        # if proba:
-        #     ax.set_facecolor('black')
-        ax.set_xticks([])
-        ax.set_yticks([])
-        # set lim
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        return ax, sparse
+    # def plot_round_label_map(self, ax=None, cmap='tab10', grid=200, fast=False, initial_resolution=32):
+    #     labels, alpha, sparse = self.get_map(content='label_roundtrip', fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution, )
+    #     if ax is None:
+    #         ax = plt.gca()
+    #     labels_normlized = labels/self.clf.classes_.max() if self.clf.classes_.max() > 9 else labels/9
+    #     CMAP = colormaps[cmap]
+    #     map = CMAP(labels_normlized)
+    #     ax.imshow(map, interpolation='nearest', aspect='auto', extent=[0, 1, 0, 1])
+    #     # if proba:
+    #     #     ax.set_facecolor('black')
+    #     ax.set_xticks([])
+    #     ax.set_yticks([])
+    #     # set lim
+    #     ax.set_xlim(0, 1)
+    #     ax.set_ylim(0, 1)
+    #     return ax, sparse
 
     def plot_decision_map(self, ax=None, cmap='tab10', epsilo=0.9, proba=True, fast=False, grid=200, initial_resolution=32, interpolation_method='linear', content='label'):
         """Plot probability map for the classifier

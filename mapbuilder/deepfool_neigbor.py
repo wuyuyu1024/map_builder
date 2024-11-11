@@ -152,15 +152,15 @@ def deepfool_batch(
             _, orig_classes = T.max(model(input_batch), dim=1)
             orig_classes = orig_classes.flatten()
     else:
-        orig_classes = T.tensor(labels, device=model.linear.weight.device, dtype=T.long)
+        orig_classes = T.tensor(labels, device=input_batch.device, dtype=T.long)
     perturbed_points = input_batch.clone().detach()
     r_hat = T.zeros_like(perturbed_points)
     perturbed_points_final = T.full_like(perturbed_points, T.nan)
     perturbed_classes = orig_classes.clone().detach()
     q = T.arange(input_batch.size(0), device=perturbed_points.device, dtype=T.long)
-    loop = tqdm(range(max_iter))
+    loop = range(max_iter)
     for i in loop:
-        loop.set_description(f"{len(q) = }")
+        # loop.set_description(f"{len(q) = }")
         if len(q) == 0:
             break
         jacobians, outputs = vmap(
@@ -191,36 +191,59 @@ def deepfool(model: nn.Module, input_example: T.Tensor, max_iter: int = 50):
 
 def deepfool_minibatches(
     model: nn.Module,
-    labels: np.ndarray,
     input_batch: T.Tensor,
-    batch_size: int = 10_000,
+    labels: np.ndarray | None,
+    batch_size: int = 1000,
     max_iter: int = 50,
-):
+):  
     
 
-    minibatches = DataLoader(
-        TensorDataset(input_batch), batch_size=batch_size, shuffle=False
-    )
-
-    all_perturbed_points = []
-    all_orig_classes = []
-    all_perturbed_classes = []
-    for batch in minibatches:
-        (to_perturb,) = batch
-        perturbed, orig_classes, perturbed_classes = deepfool_batch(
-            model, to_perturb, max_iter=max_iter
+    if labels is None:
+        minibatches = DataLoader(
+            TensorDataset(input_batch), batch_size=batch_size, shuffle=False
         )
 
-        all_perturbed_points.append(perturbed)
-        all_orig_classes.append(orig_classes)
-        all_perturbed_classes.append(perturbed_classes)
+        all_perturbed_points = []
+        all_orig_classes = []
+        all_perturbed_classes = []
+        for batch in minibatches:
+            (to_perturb,) = batch
+            perturbed, orig_classes, perturbed_classes = deepfool_batch(
+                model, to_perturb, labels, max_iter=max_iter
+            )
 
-    return (
-        T.cat(all_perturbed_points, dim=0),
-        T.cat(all_orig_classes, dim=0),
-        T.cat(all_perturbed_classes, dim=0),
-    )
+            all_perturbed_points.append(perturbed)
+            all_orig_classes.append(orig_classes)
+            all_perturbed_classes.append(perturbed_classes)
 
+        return (
+            T.cat(all_perturbed_points, dim=0),
+            T.cat(all_orig_classes, dim=0),
+            T.cat(all_perturbed_classes, dim=0),
+        )
+
+    else:
+        minibatches = DataLoader(
+            TensorDataset(input_batch, T.tensor(labels, device=input_batch.device)),
+            batch_size=batch_size,
+            shuffle=False,
+        )
+        all_perturbed_points = []
+        all_perturbed_classes = []
+        for batch in minibatches:
+            to_perturb, label_batch = batch
+            perturbed, orig_classes, perturbed_classes = deepfool_batch(
+                model, to_perturb, label_batch, max_iter=max_iter
+            )
+
+            all_perturbed_points.append(perturbed)
+            all_perturbed_classes.append(perturbed_classes)
+
+        return (
+            T.cat(all_perturbed_points, dim=0),
+            labels,
+            T.cat(all_perturbed_classes, dim=0),
+        )
 
 
 if __name__ == "__main__":
