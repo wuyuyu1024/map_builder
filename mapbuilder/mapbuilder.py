@@ -216,6 +216,7 @@ class MapBuilder:
     
     def get_map(self, content:str='label', fast_strategy:bool=False, resolution: int=128, interpolation_method: str='linear', initial_resolution:int=32, ) -> tuple:
         if not fast_strategy:
+            print('slow strategy')
             xx, yy = self.make_meshgrid(grid=resolution)
             XY = np.c_[xx.ravel(), yy.ravel()]
             conf = None
@@ -238,6 +239,7 @@ class MapBuilder:
                 conf = np.flip(conf, axis=0)
             
         else:
+            print('fast strategy')
             main, conf, sparse =  self.get_fastmap(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content)
             main = np.rot90(main, k=1)
             conf = np.rot90(conf, k=1)
@@ -451,20 +453,23 @@ class MapBuilder:
         return interpolate.griddata((X, Y), Z, (xi[None, :], yi[:, None]), method=method)
 
 
-    def plot_gradient_map(self, ax=None, cmap=None, grid=100, fast=False):
+    def plot_gradient_map(self, ax=None, cmap=None, grid=100, fast=False, initial_resolution=32, interpolation_method='linear'):
         """Plot probability map for the classifier
         """
         if ax is None:
             ax = plt.gca()
 
-        _, D, sparse = self.get_map(content='gradient', fast_strategy=fast, resolution=grid)
+        _, D, sparse = self.get_map(content='gradient', fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution, interpolation_method=interpolation_method)
             
         if cmap is None:
             CMAP = cm.get_cmap('magma')
         else:
             CMAP = colormaps[cmap]
 
-        ax.imshow(D, cmap=CMAP, extent=[0, 1, 0, 1])  
+        ax.imshow(D, cmap=CMAP, extent=[0, 1, 0, 1])
+
+        ## plot mean of D as text on the plot
+        ax.text(0.1, 0.9, f'{np.mean(D):.4f}', fontsize=12, color='w', ha='center', va='center')  
 
         ax.set_xticks([])
         ax.set_yticks([])
@@ -486,15 +491,17 @@ class MapBuilder:
                     linewidths=1, colors="k", antialiased=True)
         return ax, sparse
     
-    def plot_dist_map(self, ax=None, cmap='viridis', grid=200, fast=False):
+    def plot_dist_map(self, ax=None, cmap='viridis', grid=200, fast=False, initial_resolution=32):
         """Plot probability map for the classifier
         """
         if ax is None:
             ax = plt.gca()
 
-        _, D, sparse = self.get_map(content='dist_map', fast_strategy=fast, resolution=grid)
+        _, D, sparse = self.get_map(content='dist_map', fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution)
         CMAP = colormaps[cmap]
         ax.imshow(D, cmap=cmap, extent=[0, 1, 0, 1])  
+
+        ax.text(0.1, 0.9, f'{np.mean(D):.4f}', fontsize=12, color='w', ha='center', va='center')
         ax.set_xticks([])
         ax.set_yticks([])
         # aspect square
@@ -564,16 +571,16 @@ class MapBuilder:
             ax.scatter(X_2d[:, 0], X_2d[:, 1], marker='.', s=size, edgecolors=None, c='w', **kwargs)
         return ax
     
-    def plot_map(self, ax=None, content='label', fast=False, grid=128):
+    def plot_map(self, ax=None, content='label', fast=False, grid=128, B=32):
         match content:
             case 'label':
-                ax, sparse = self.plot_decision_map(ax=ax, fast=fast, grid=grid)
+                ax, sparse = self.plot_decision_map(ax=ax, fast=fast, grid=grid, initial_resolution=B, content='label')
             case 'gradient':
-                ax, sparse = self.plot_gradient_map(ax=ax, fast=fast, grid=grid)
+                ax, sparse = self.plot_gradient_map(ax=ax, fast=fast, grid=grid, initial_resolution=B)
             case 'boundary':
                 ax, sparse = self.plot_boundary(ax=ax, fast=fast, grid=grid)
             case 'label_roundtrip':
-                ax, sparse = self.plot_decision_map(ax=ax, fast=fast, grid=grid, content='label_roundtrip', proba=False)
+                ax, sparse = self.plot_decision_map(ax=ax, fast=fast, grid=grid, content='label_roundtrip', proba=False, initial_resolution=B)
             case 'dist_map':
                 ax, sparse = self.plot_dist_map(ax=ax, fast=fast, grid=grid)
             case _:
