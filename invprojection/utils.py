@@ -27,6 +27,11 @@ class PPinvWrapper:
             self.X2d = self.P.fit_transform(X)
         else:
             self.X2d = X2d
-        self.Pinv.fit(self.X2d, X, **kwargs)
+
+        ## check is **kwargs is required for Pinv
+        if 'y' in kwargs:
+            self.Pinv.fit(self.X2d, X, **kwargs)
+        else:
+            self.Pinv.fit(self.X2d, X)
         return self
     

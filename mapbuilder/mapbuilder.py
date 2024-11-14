@@ -24,6 +24,11 @@ class MapBuilder:
     def __init__(self, ppinv, clf=None, X2d=None, X=None, y=None, scaling=1, P=None):
         # y = np.array(y).reshape(-1, 1)
         # y = np.array(y).astype(int)
+
+        assert X2d.shape[1] == 2
+        assert X.shape[0] == X2d.shape[0]
+        assert X.shape[1] > 2
+        
         if clf is None:
             device = T.device("cuda" if T.cuda.is_available() else "cpu")   
             print('n_classes:', len(np.unique(y)))

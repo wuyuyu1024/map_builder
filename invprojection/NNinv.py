@@ -33,7 +33,7 @@ class NNinv_net(nn.Module):
 
 class NNinv_torch:
     ### wrapper for sklearn API
-    def __init__(self, dims=[2048, 2048, 2048, 2048], bottleneck_dim=2):
+    def __init__(self, dims=(128, 256, 512, 1024), bottleneck_dim=2):
         self.model = None
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         print('device: ', self.device)
@@ -49,12 +49,12 @@ class NNinv_torch:
         self.loss_fn = nn.MSELoss()
         return model
 
-    def fit(self, X_2d, X, epochs=150, batch_size=128, verbose=True, early_stop=False, patience=5):
+    def fit(self, X_2d, X, epochs=150, batch_size=128, verbose=True, early_stop=False, patience=5, **kwargs):
         ## no continuous training for the purpose of evaluation
         self.reset()
         ######################
 
-        self.scaler = StandardScaler()
+        self.scaler = MinMaxScaler()
         X_2d = self.scaler.fit_transform(X_2d)
         X_2d = torch.tensor(X_2d, dtype=torch.float32).to(self.device)
         X = torch.tensor(X, dtype=torch.float32).to(self.device)
