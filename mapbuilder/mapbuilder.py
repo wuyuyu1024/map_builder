@@ -32,7 +32,8 @@ class MapBuilder:
         if clf is None:
             device = T.device("cuda" if T.cuda.is_available() else "cpu")   
             print('n_classes:', len(np.unique(y)))
-            self.clf = LogisticRegression_nn(X.shape[1], len(np.unique(y))).to(device)
+            # self.clf = LogisticRegression_nn(X.shape[1], len(np.unique(y))).to(device)
+            self.clf = NNClassifier(X.shape[1], len(np.unique(y)), layer_sizes=(100,)).to(device)
             self.clf.init_parameters()
             # X_tensor, y_tensor = map(partial(T.tensor, dtype=T.float32), (X, y))
             X_tensor, y_tensor = T.tensor(X, dtype=T.float32), T.tensor(y, dtype=T.long)
@@ -271,6 +272,7 @@ class MapBuilder:
     def get_non_label_content(self, content:str, spare_map, resolution:int):
         space2d = spare_map[:, :2].astype(int)
         labels = spare_map[:, 3]
+        wh = spare_map[:, 4:6]
         
         scaled_2d = space2d / resolution
         match content:
@@ -279,7 +281,7 @@ class MapBuilder:
             case 'dist_map':
                 value = self.get_deepfool(scaled_2d, labels).reshape(-1, 1)
 
-        return np.concatenate([space2d, value, labels.reshape(-1, 1)], axis=1)
+        return np.concatenate([space2d, value, labels.reshape(-1, 1), wh], axis=1)
 
 
     def get_fastmap(self, resolution: int, computational_budget=None, interpolation_method: str = "linear", initial_resolution: int | None = None, content:str | None =None):
@@ -353,7 +355,7 @@ class MapBuilder:
                 # starting from the top left corner of the window
                 # ending at the bottom right corner of the window
                 # the +1 is because the range function is not inclusive
-                confidence_map.append((x, y, conf, label))  ###?????  x and y are switched
+                confidence_map.append((x, y, conf, label, w, h))  ###?????  x and y are switched
                 x0, x1, y0, y1 = get_window_borders(x, y, w, h)
                 # img[y0:y1 + 1, x0:x1 + 1] = label
                 img[x0:x1 + 1, y0:y1 + 1] = label
@@ -361,8 +363,8 @@ class MapBuilder:
             # fill the new image with the single points  #### Isn't this already done in the previous loop?  
             #### neet to switch x and y
             for i in range(len(single_points_indices)):
-                img[single_points_indices[i]] = single_points_labels[i]
-                confidence_map.append((single_points_indices[i][0], single_points_indices[i][1], single_points_confidence[i], single_points_labels[i]))
+                img[single_points_indices[i]] = single_points_labels[i]  ### out of index sometimes
+                confidence_map.append((single_points_indices[i][0], single_points_indices[i][1], single_points_confidence[i], single_points_labels[i], 1, 1))
 
             # update the priority queue
             priority_queue = self._update_priority_queue_(priority_queue, img, indices, window_sizes, predicted_labels)
@@ -413,7 +415,7 @@ class MapBuilder:
         for (w, h), (x, y), label, conf in zip(sizes, indexes, predicted_labels, predicted_confidence):
             x0, x1, y0, y1 = get_window_borders(x, y, w, h)
             img[x0:x1 + 1, y0:y1 + 1] = label
-            confidence_map.append((x, y, conf, label))
+            confidence_map.append((x, y, conf, label, w, h))
         
         return indexes, sizes, predicted_labels, computational_budget, img, confidence_map
 
@@ -422,7 +424,7 @@ class MapBuilder:
 
         #####################################3
         labels, confidences_border = self.get_content_value(content, space2d_border)
-        confidence_map = [(i, j, conf, label) for (i, j), conf, label in zip(border_indexes, confidences_border, labels)]
+        confidence_map = [(i, j, conf, label, 0, 0) for (i, j), conf, label in zip(border_indexes, confidences_border, labels)]
         return confidence_map
 
     def _update_priority_queue_(self, priority_queue, img, indexes, sizes, labels):
@@ -448,7 +450,7 @@ class MapBuilder:
             np.array: an array of shape (resolution, resolution) containing the data values for the 2D space image
         """
         X, Y, Z = [], [], []
-        for (x, y, z, l) in sparse_map:
+        for (x, y, z, l, w, h) in sparse_map:
             X.append(x)
             Y.append(y)
             Z.append(z)

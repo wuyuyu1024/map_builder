@@ -51,7 +51,7 @@ print('Start')
 
 
 PPinv_dict = {
-    'DBM (UMAP_NNInv)': PPinvWrapper(P=UMAP(n_components=2, random_state=0), Pinv=NNinv_torch()),
+    'DBM (UMAP+NNInv)': PPinvWrapper(P=UMAP(n_components=2, random_state=0), Pinv=NNinv_torch()),
     "SSNP": SSNP(verbose=0)
 }
 
@@ -68,8 +68,8 @@ classifiers = {
 data_dir = '../sdbm/data'
 data_dirs = [
     # 'Iris',
+    'MNIST',
     'HAR', 
-    'MNIST', 
     'FashionMNIST', 
     #  'reuters', 
      ]
@@ -104,59 +104,63 @@ for d in data_dirs:
         dataset[3] = dataset[3][:test_size]
 
     
-GRID = 256
-
-results = pd.DataFrame(columns=['Data', 'PPinv', 'Classifier', 'Accuracy', 'time dummy', 'time fast', 'grid', '$Cons_p$', '$Cons_p$ fast', 'diff $Cons_p$'])
-
-### save directory
-save_dir = f'./results/cons_p/'
-os.makedirs(save_dir, exist_ok=True)
-
-for data_name, dataset in datasets_real.items():
-    print(f"Data: {data_name}")
-    X, _, y, _ = dataset
-    for ppinv_name, ppinv in PPinv_dict.items():
-        print(f"PP: {ppinv_name}")
-        print('X shape:', X.shape)
-        print('y shape:', y.shape)
-        ppinv.fit(X=X, y=y)
-        try:
-            X2d = ppinv.X2d
-        except:
-            X2d = ppinv.transform(X)
-
-        for clf_name, clf in classifiers.items():
-            print(f"Classifier: {clf_name}")
-            clf.fit(X, y)
-            acc = clf.score(X, y)
-            print(f"Accuracy: {acc}")
-            print("")
-            mapbuilder = MapBuilder(ppinv=ppinv, clf=clf, X=X, y=y, scaling=0.9, X2d=X2d)
-
-            time0 = time.time()
-            label_gt,_, _ = mapbuilder.get_map(content='label', resolution=GRID, fast_strategy=False)
-            label_round_gt,_, _ = mapbuilder.get_map(content='label_roundtrip', resolution=GRID, fast_strategy=False)
-            cons_p_gt = np.sum(label_gt != label_round_gt) / GRID**2
-            time1 = time.time()
-            time_diff = time1 - time0
-
-            time2 = time.time()
-            label_fast,_, _ = mapbuilder.get_map(content='label', resolution=GRID, fast_strategy=True) 
-            label_round_fast,_, _ = mapbuilder.get_map(content='label_roundtrip', resolution=GRID, fast_strategy=True)
-            cons_p_fast = np.sum(label_fast != label_round_fast) / GRID**2
-            time3 = time.time()
-            time_diff_fast = time3 - time2
-
-            diff_cons_p = cons_p_fast - cons_p_gt
-
-            print(f"Cons_p: {cons_p_gt}", f"Cons_p fast: {cons_p_fast}", f"Diff Cons_p: {diff_cons_p}", f'Time dummy: {time_diff}', f'Time fast: {time_diff_fast}')
 
 
-            results = results._append({'Data': data_name, 'PPinv': ppinv_name, 'Classifier': clf_name, 'Accuracy': acc, 'time dummy': time_diff, 'time fast': time_diff_fast, 'grid': GRID, '$Cons_p$': cons_p_gt, '$Cons_p$ fast': cons_p_fast, 'diff $Cons_p$': diff_cons_p}, ignore_index=True)
-            
-            results.to_csv(f'{save_dir}/results{date}.csv')
 
-            
+if __name__ == '__main__':
+    GRID = 256
+
+    results = pd.DataFrame(columns=['Data', 'PPinv', 'Classifier', 'Accuracy', 'time dummy', 'time fast', 'grid', '$Cons_p$', '$Cons_p$ fast', 'diff $Cons_p$'])
+
+    ### save directory
+    save_dir = f'./results/cons_p/'
+    os.makedirs(save_dir, exist_ok=True)
+
+    for data_name, dataset in datasets_real.items():
+        print(f"Data: {data_name}")
+        X, _, y, _ = dataset
+        for ppinv_name, ppinv in PPinv_dict.items():
+            print(f"PP: {ppinv_name}")
+            print('X shape:', X.shape)
+            print('y shape:', y.shape)
+            ppinv.fit(X=X, y=y)
+            try:
+                X2d = ppinv.X2d
+            except:
+                X2d = ppinv.transform(X)
+
+            for clf_name, clf in classifiers.items():
+                print(f"Classifier: {clf_name}")
+                clf.fit(X, y)
+                acc = clf.score(X, y)
+                print(f"Accuracy: {acc}")
+                print("")
+                mapbuilder = MapBuilder(ppinv=ppinv, clf=clf, X=X, y=y, scaling=0.9, X2d=X2d)
+
+                time0 = time.time()
+                label_gt,_, _ = mapbuilder.get_map(content='label', resolution=GRID, fast_strategy=False)
+                label_round_gt,_, _ = mapbuilder.get_map(content='label_roundtrip', resolution=GRID, fast_strategy=False)
+                cons_p_gt = np.sum(label_gt != label_round_gt) / GRID**2
+                time1 = time.time()
+                time_diff = time1 - time0
+
+                time2 = time.time()
+                label_fast,_, _ = mapbuilder.get_map(content='label', resolution=GRID, fast_strategy=True) 
+                label_round_fast,_, _ = mapbuilder.get_map(content='label_roundtrip', resolution=GRID, fast_strategy=True)
+                cons_p_fast = np.sum(label_fast != label_round_fast) / GRID**2
+                time3 = time.time()
+                time_diff_fast = time3 - time2
+
+                diff_cons_p = cons_p_fast - cons_p_gt
+
+                print(f"Cons_p: {cons_p_gt}", f"Cons_p fast: {cons_p_fast}", f"Diff Cons_p: {diff_cons_p}", f'Time dummy: {time_diff}', f'Time fast: {time_diff_fast}')
+
+
+                results = results._append({'Data': data_name, 'PPinv': ppinv_name, 'Classifier': clf_name, 'Accuracy': acc, 'time dummy': time_diff, 'time fast': time_diff_fast, 'grid': GRID, '$Cons_p$': cons_p_gt, '$Cons_p$ fast': cons_p_fast, 'diff $Cons_p$': diff_cons_p}, ignore_index=True)
+                
+                results.to_csv(f'{save_dir}/results{date}.csv')
+
+                
 
 
             
