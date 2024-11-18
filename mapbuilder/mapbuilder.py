@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib import colormaps
 
-from .tools import binary_split, generate_windows, get_pixel_priority, get_tasks_with_same_priority, get_window_borders
+from .tools import binary_split, generate_windows, get_pixel_priority, get_tasks_with_same_priority, get_window_borders, get_pixel_priority_general
 from .deepfool_neigbor import Neighbors, deepfool_minibatches, deepfool_batch
 from .nnclassifier import NNClassifier, LogisticRegression_nn
 
@@ -220,7 +220,7 @@ class MapBuilder:
         return dist_map
     
     
-    def get_map(self, content:str='label', fast_strategy:bool=False, resolution: int=128, interpolation_method: str='linear', initial_resolution:int=32, ) -> tuple:
+    def get_map(self, content:str='label', fast_strategy:bool=False, resolution: int=128, interpolation_method: str='linear', initial_resolution:int=32, threshold=0.05) -> tuple:
         if not fast_strategy:
             print('slow strategy')
             xx, yy = self.make_meshgrid(grid=resolution)
@@ -246,7 +246,17 @@ class MapBuilder:
             
         else:
             print('fast strategy')
-            main, conf, sparse =  self.get_fastmap(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content)
+            match content:
+                case 'label':
+                    main, conf, sparse = self.get_fastmap(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content)
+                case 'label_roundtrip':
+                    main, conf, sparse = self.get_fastmap(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content)
+                case 'gradient':
+                    main, conf, sparse =  self.get_fastmap_general(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content, threshold=threshold)
+                case 'dist_map':
+                    main, conf, sparse = self.get_fastmap(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content)
+                case _:
+                    raise ValueError('content not supported')
             main = np.rot90(main, k=1)
             conf = np.rot90(conf, k=1)
             sparse = np.array(sparse)
@@ -426,7 +436,161 @@ class MapBuilder:
         labels, confidences_border = self.get_content_value(content, space2d_border)
         confidence_map = [(i, j, conf, label, 0, 0) for (i, j), conf, label in zip(border_indexes, confidences_border, labels)]
         return confidence_map
+    
+    def get_fastmap_general(self, resolution: int, computational_budget=None, interpolation_method: str = "linear", initial_resolution: int | None = None, content:str | None =None, threshold=0.05):
+        assert(initial_resolution > 0)
+        assert(int(initial_resolution) == initial_resolution)    
+        assert(initial_resolution < resolution)
+        # ------------------------------------------------------------
+        INITIAL_COMPUTATIONAL_BUDGET = computational_budget = resolution * resolution if computational_budget is None else computational_budget
 
+        indexes, sizes, computational_budget, img, confidence_map = self._fill_initial_windows_general_(
+            initial_resolution=initial_resolution, 
+            resolution=resolution, 
+            computational_budget=computational_budget,
+            confidence_interpolation_method=interpolation_method,
+            content=content,
+            )
+
+        # analyze the initial points and generate the priority queue
+        priority_queue = PriorityQueue()
+        priority_queue = self._update_priority_queue_general_(priority_queue, img, indexes, sizes, threshold=threshold)
+        
+        # -------------------------------------
+        # start the iterative process of filling the image
+        # self.console.log(f"Starting the iterative process of refining windows...")
+        # self.console.log(f'BINARY SPLIT, interpolation_method: {interpolation_method}')
+        # count = 0
+        while computational_budget > 0 and not priority_queue.empty():
+            # take the highest priority tasks
+            items = get_tasks_with_same_priority(priority_queue)
+
+            space2d, indices = [], []
+            single_points_space, single_points_indices = [], []
+            window_sizes = []
+
+            for (w, h, i, j) in items:
+                
+                if w == 1 and h == 1:   ## reached the smallest window
+                    single_points_space.append((i / resolution, j / resolution))
+                    single_points_indices.append((int(i), int(j)))
+                    continue
+                
+                neighbors, sizes = binary_split(i, j, w, h)
+                space2d += [(x / resolution, y / resolution) for (x, y) in neighbors]###?????  x and y are switched
+                window_sizes += sizes
+                indices += neighbors
+
+            space = single_points_space + space2d
+
+            # #####debug
+            # space = space2d
+            # if space == []:
+                # break
+
+            # check if the computational budget is enough and update it
+            if computational_budget - len(space) < 0:
+                # self.console.warn("Computational budget exceeded, stopping the process")
+                break
+
+            # decode the space
+            predicted_values = self.get_content_value_general(content, space)
+            
+            computational_budget -= len(space)
+
+
+            single_points_values = predicted_values[:len(single_points_space)]
+            predicted_values = predicted_values[len(single_points_space):]
+         
+            # fill the new image with the new labels and update the priority queue
+            for (w, h), (x, y),  v in zip(window_sizes, indices, predicted_values):
+                # all the pixels in the window are set to the same label
+                # starting from the top left corner of the window
+                # ending at the bottom right corner of the window
+                # the +1 is because the range function is not inclusive
+                confidence_map.append((x, y, v, w, h))  ###?????  x and y are switched
+                x0, x1, y0, y1 = get_window_borders(x, y, w, h)
+                # img[y0:y1 + 1, x0:x1 + 1] = label
+                img[x0:x1 + 1, y0:y1 + 1] = v
+          
+            # fill the new image with the single points  #### Isn't this already done in the previous loop?  
+            #### neet to switch x and y
+            for i in range(len(single_points_values)):
+                img[single_points_indices[i]] = single_points_values[i]  ### out of index sometimes
+                confidence_map.append((single_points_indices[i][0], single_points_indices[i][1], single_points_values[i], 1, 1))
+
+            # update the priority queue
+            priority_queue = self._update_priority_queue_general_(priority_queue, img, indices, window_sizes, threshold=threshold)
+
+
+        # generating the confidence image using interpolation based on the confidence map
+        img_interpolated = self._generate_interpolated_image_(sparse_map=confidence_map,
+                                                            resolution=resolution,
+                                                            method=interpolation_method).T
+
+        return img, img_interpolated, confidence_map
+    
+    def _fill_initial_windows_general_(self, initial_resolution: int, resolution: int, computational_budget: int, confidence_interpolation_method: str = "linear", content=None):
+        
+        window_size = resolution // initial_resolution
+        img = np.zeros((resolution, resolution), dtype=np.int16)
+        # ------------------------------------------------------------
+
+        # ------------------------------------------------------------
+        # generate the initial points
+        indexes, sizes, border_indexes = generate_windows(window_size, initial_resolution=initial_resolution, resolution=resolution)  ## checked
+        # creating an artificial border for the 2D confidence image
+        confidence_map = self._generate_confidence_border_general_(resolution=resolution, border_indexes=border_indexes, content=content) if confidence_interpolation_method != "nearest" else []
+        computational_budget -= len(confidence_map) 
+
+        # ------------------------------------------------------------   
+        space2d = np.array(indexes) / resolution  
+        predicted_values = self.get_content_value_general(content, space2d)
+      
+        computational_budget -= len(indexes)
+
+        # fill the initial points in the 2D image
+        for (w, h), (x, y), v in zip(sizes, indexes, predicted_values):
+            x0, x1, y0, y1 = get_window_borders(x, y, w, h)
+            img[x0:x1 + 1, y0:y1 + 1] = v
+            confidence_map.append((x, y, v, w, h))
+        
+        return indexes, sizes, computational_budget, img, confidence_map
+
+    def _generate_confidence_border_general_(self, resolution: int, border_indexes, content:str):
+        space2d_border = np.array(border_indexes) / resolution
+
+        #####################################3
+        values = self.get_content_value_general(content, space2d_border)
+        confidence_map = [(i, j, v, 0, 0) for (i, j), v, in zip(border_indexes, values)]
+        return confidence_map
+    
+    def get_content_value_general(self, content:str, space2d):
+        conf = None
+        match content:
+            case 'label':
+                values, _ = self.get_label_prob(space2d)
+            case 'label_roundtrip':
+                values, _ = self.get_label_roundtrip(space2d)
+            case 'gradient':
+                # main, _ = self.get_label_prob(space2d)
+                values = self.get_gradient_map_general(space2d)
+            case 'dist_map':
+                values = self.get_deepfool(space2d)
+            case _:
+                raise ValueError('content not supported')
+            # case _:
+                # print('not label content; return label content instead')
+                # main, conf = self.get_label_prob(space2d)
+        return values
+    
+    def _update_priority_queue_general_(self, priority_queue, img, indexes, sizes, threshold=0.05):
+        for (w, h), (x, y) in zip(sizes, indexes):
+            priority = get_pixel_priority_general(img, x, y, w, h, threshold)  ## updated
+            if priority != -1:
+                priority_queue.put((priority, (w, h, x, y)))    ## updated
+        return priority_queue
+    
     def _update_priority_queue_(self, priority_queue, img, indexes, sizes, labels):
         for (w, h), (x, y), label in zip(sizes, indexes, labels):
             priority = get_pixel_priority(img, x, y, w, h, label)  ## updated
@@ -450,23 +614,23 @@ class MapBuilder:
             np.array: an array of shape (resolution, resolution) containing the data values for the 2D space image
         """
         X, Y, Z = [], [], []
-        for (x, y, z, l, w, h) in sparse_map:
-            X.append(x)
-            Y.append(y)
-            Z.append(z)
+        for item in sparse_map:
+            X.append(item[0])
+            Y.append(item[1])
+            Z.append(item[2])
         X, Y, Z = np.array(X), np.array(Y), np.array(Z)
         xi = np.linspace(0, resolution-1, resolution)
         yi = np.linspace(0, resolution-1, resolution)
         return interpolate.griddata((X, Y), Z, (xi[None, :], yi[:, None]), method=method)
 
 
-    def plot_gradient_map(self, ax=None, cmap=None, grid=100, fast=False, initial_resolution=32, interpolation_method='linear'):
+    def plot_gradient_map(self, ax=None, cmap=None, grid=100, fast=False, initial_resolution=32, interpolation_method='linear', threshold=0.05):
         """Plot probability map for the classifier
         """
         if ax is None:
             ax = plt.gca()
 
-        _, D, sparse = self.get_map(content='gradient', fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution, interpolation_method=interpolation_method)
+        _, D, sparse = self.get_map(content='gradient', fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution, interpolation_method=interpolation_method, threshold=threshold) 
             
         if cmap is None:
             CMAP = cm.get_cmap('magma')

@@ -183,6 +183,55 @@ def get_pixel_priority(img, i, j, window_width, window_height, label):
 
     return 1/cost
 
+@jit
+def get_pixel_priority_general(img, i, j, window_width, window_height, threshold=0.05):
+    """
+       Calculates the priority of decoding a chunk of pixels.
+       The chunk is defined by the window size and the pixel coordinates (i,j).
+
+    Args:
+        img (np.ndarray): the image w.r.t. which the priority is calculated
+        i (float): the row of the current pixel
+        j (float): the column of the current pixel
+        window_width (float), window_height (float): the window size (i.e. the chunk size)
+        label (any): the label of the current pixel
+
+    Returns:
+        priority (float): the priority of decoding the chunk in range [0,1] or -1 if the chunk does not need to be decoded
+    """
+    resolution = img.shape[0]
+    # getting the 4 neighbors
+    w = (window_width - 1) / 2
+    h = (window_height - 1)/ 2
+    neighbors = []
+
+    if i - h - 1 >= 0:
+        neighbors.append(img[int(i - h - 1), int(j)])
+    if i + h + 1 < resolution:
+        neighbors.append(img[int(i + h + 1), int(j)])
+
+    if j - w - 1 >= 0:
+        neighbors.append(img[int(i), int(j - w - 1)])
+    if j + w + 1 < resolution:
+        neighbors.append(img[int(i), int(j + w + 1)])
+
+    neighbors = np.array(neighbors)
+    cost = (neighbors.max() - neighbors.min())/ neighbors.max()
+    if cost < threshold:
+        return -1
+    return 1/cost 
+    # cost = 0
+    # for neighbor in neighbors:
+    #     if neighbor != label:
+    #         cost += 1
+    # cost /= len(neighbors)
+    # cost *= window_width * window_height
+    
+    # if cost == 0:
+    #     return -1
+
+    # return 1/cost
+
 @njit
 def binary_split(i, j, W, H):
     Wc, Wf = ceil(W/2), floor(W/2)
