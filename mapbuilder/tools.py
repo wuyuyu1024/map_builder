@@ -216,21 +216,14 @@ def get_pixel_priority_general(img, i, j, window_width, window_height, threshold
         neighbors.append(img[int(i), int(j + w + 1)])
 
     neighbors = np.array(neighbors)
+    if neighbors.max() == 0:
+        print('max is 0!!!!:', neighbors)
+        return -1
     cost = (neighbors.max() - neighbors.min())/ neighbors.max()
     if cost < threshold:
         return -1
     return 1/cost 
-    # cost = 0
-    # for neighbor in neighbors:
-    #     if neighbor != label:
-    #         cost += 1
-    # cost /= len(neighbors)
-    # cost *= window_width * window_height
-    
-    # if cost == 0:
-    #     return -1
 
-    # return 1/cost
 
 @njit
 def binary_split(i, j, W, H):

@@ -12,6 +12,7 @@ from functools import partial
 from tqdm import tqdm
 from enum import Enum
 from sklearn.preprocessing import MinMaxScaler, minmax_scale
+from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib import colormaps
@@ -43,7 +44,7 @@ class MapBuilder:
             self.clf = clf
 
         self.ppinv = ppinv
-
+        self.X = X
         self.X2d = X2d
         self.padding = (1-scaling) / 2
         self.scaler2d = MinMaxScaler(feature_range=(0+self.padding, 1-self.padding))
@@ -104,6 +105,54 @@ class MapBuilder:
         Dy = (self.get_nd(X2d_u) - self.get_nd(X2d_d)) / (2 * w)
         gradients = np.sqrt(np.sum(Dx**2, axis=1) + np.sum(Dy**2, axis=1))  
         return gradients
+    
+    def get_gradient_map_reduced(self, xy=None, resolution=200):
+        """
+        for each pixel, the gradient is calculated by
+        Dx(y) = (B(y + (w, 0)) - B(y - (w, 0)))/ 2w 
+        Dy(y) = (B(y + (0, h)) - B(y - (0, h)))/ 2h 
+        D(y) = squrt(‖Dx(y)‖**2 + ‖Dy(y)‖**2)
+        
+        where y is a point in the 2D projection space and w and h are a pixel's width and height, respectively.
+        B is ppinv.inverse_transform() function.
+        """
+        XY_int = [(int(x*resolution), int(y*resolution)) for x, y in xy]
+        tem_set = set()
+        for (x, y) in XY_int:
+            if (x-1, y) not in self.nd_sparse:
+                tem_set.add((x-1, y))
+            if (x+1, y) not in self.nd_sparse:
+                tem_set.add((x+1, y))
+            if (x, y-1) not in self.nd_sparse:
+                tem_set.add((x, y-1))
+            if (x, y+1) not in self.nd_sparse:
+                tem_set.add((x, y+1))
+
+        if len(tem_set) != 0:
+            tem_set = np.array(list(tem_set)).reshape(-1, 2)
+            tem_set_nd = self.get_nd(tem_set/ resolution)
+            for i, (x, y) in enumerate(tem_set):
+                self.nd_sparse[(x, y)] = tem_set_nd[i]
+
+        gradients = []
+        w = 1 / resolution ##############CHECK this
+        for (x, y) in XY_int:
+            Dx = (self.nd_sparse[(x+1, y)] - self.nd_sparse[(x-1, y)]) / (2 * w)
+            Dy = (self.nd_sparse[(x, y+1)] - self.nd_sparse[(x, y-1)]) / (2 * w)
+            gradients.append(np.sqrt(np.sum(Dx**2) + np.sum(Dy**2)))
+        return np.array(gradients)
+
+                
+        # print("calculating gradient map")
+        # w = 1 / resolution ##############CHECK this
+        # X2d_l = xy - np.array([w, 0])
+        # X2d_r = xy + np.array([w, 0])
+        # X2d_u = xy + np.array([0, w])
+        # X2d_d = xy - np.array([0, w])
+        # Dx = (self.get_nd(X2d_r) - self.get_nd(X2d_l)) / (2 * w)
+        # Dy = (self.get_nd(X2d_u) - self.get_nd(X2d_d)) / (2 * w)
+        # gradients = np.sqrt(np.sum(Dx**2, axis=1) + np.sum(Dy**2, axis=1))  
+        # return gradients
 
     def get_gradient_map_sparse(self, xy=None, resolution=200):
         """
@@ -219,6 +268,11 @@ class MapBuilder:
         # naive_wormhole_data = naive_wormhole_data.cpu().numpy()
         return dist_map
     
+    def get_dist2nearest(self, xy):
+        nd_data = self.get_nd(xy)
+        dist, _ = self.nnsearcher.kneighbors(nd_data)
+        return dist.flatten()
+    
     
     def get_map(self, content:str='label', fast_strategy:bool=False, resolution: int=128, interpolation_method: str='linear', initial_resolution:int=32, threshold=0.05) -> tuple:
         if not fast_strategy:
@@ -237,6 +291,11 @@ class MapBuilder:
                     conf =  self.get_gradient_new(grid=resolution)
                 case 'dist_map':
                     conf = self.get_deepfool(XY)
+                case 'nearest':
+                    self.nnsearcher = NearestNeighbors(n_neighbors=1).fit(self.X)
+                    conf = self.get_dist2nearest(XY)
+                case _:
+                    raise ValueError('content not supported')
             if main is not None:
                 main = main.reshape(xx.shape)
                 main = np.flip(main.reshape(xx.shape), axis=0)
@@ -255,6 +314,12 @@ class MapBuilder:
                     main, conf, sparse =  self.get_fastmap_general(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content, threshold=threshold)
                 case 'dist_map':
                     main, conf, sparse = self.get_fastmap(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content)
+                case 'gradient_reduced':
+                    self.nd_sparse = dict()
+                    main, conf, sparse =  self.get_fastmap_general(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content, threshold=threshold)
+                case 'nearest':
+                    self.nnsearcher = NearestNeighbors(n_neighbors=1).fit(self.X)
+                    main, conf, sparse = self.get_fastmap_general(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content, threshold=threshold)
                 case _:
                     raise ValueError('content not supported')
             main = np.rot90(main, k=1)
@@ -290,6 +355,8 @@ class MapBuilder:
                 value = self.get_gradient_map_general(scaled_2d).reshape(-1, 1)
             case 'dist_map':
                 value = self.get_deepfool(scaled_2d, labels).reshape(-1, 1)
+            case _:
+                raise ValueError('content not supported')
 
         return np.concatenate([space2d, value, labels.reshape(-1, 1), wh], axis=1)
 
@@ -533,7 +600,7 @@ class MapBuilder:
     def _fill_initial_windows_general_(self, initial_resolution: int, resolution: int, computational_budget: int, confidence_interpolation_method: str = "linear", content=None):
         
         window_size = resolution // initial_resolution
-        img = np.zeros((resolution, resolution), dtype=np.int16)
+        img = np.zeros((resolution, resolution), dtype=np.float32)
         # ------------------------------------------------------------
 
         # ------------------------------------------------------------
@@ -575,8 +642,12 @@ class MapBuilder:
             case 'gradient':
                 # main, _ = self.get_label_prob(space2d)
                 values = self.get_gradient_map_general(space2d)
+            case 'gradient_reduced':
+                values = self.get_gradient_map_reduced(space2d)
             case 'dist_map':
                 values = self.get_deepfool(space2d)
+            case 'nearest':
+                values = self.get_dist2nearest(space2d)
             case _:
                 raise ValueError('content not supported')
             # case _:
@@ -624,13 +695,15 @@ class MapBuilder:
         return interpolate.griddata((X, Y), Z, (xi[None, :], yi[:, None]), method=method)
 
 
-    def plot_gradient_map(self, ax=None, cmap=None, grid=100, fast=False, initial_resolution=32, interpolation_method='linear', threshold=0.05):
+    def plot_gradient_map(self, ax=None, cmap=None, grid=100, fast=False, initial_resolution=32, interpolation_method='linear', threshold=0.1, reduced=False):
         """Plot probability map for the classifier
         """
         if ax is None:
             ax = plt.gca()
-
-        _, D, sparse = self.get_map(content='gradient', fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution, interpolation_method=interpolation_method, threshold=threshold) 
+        if reduced:
+            _, D, sparse = self.get_map(content='gradient_reduced', fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution, interpolation_method=interpolation_method, threshold=threshold) 
+        else:
+            _, D, sparse = self.get_map(content='gradient', fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution, interpolation_method=interpolation_method, threshold=threshold) 
             
         if cmap is None:
             CMAP = cm.get_cmap('magma')
@@ -662,13 +735,13 @@ class MapBuilder:
                     linewidths=1, colors="k", antialiased=True)
         return ax, sparse
     
-    def plot_dist_map(self, ax=None, cmap='viridis', grid=200, fast=False, initial_resolution=32):
+    def plot_dist_map(self, ax=None, cmap='viridis', grid=200, fast=False, initial_resolution=32, content='dist_map', threshold=0.1):
         """Plot probability map for the classifier
         """
         if ax is None:
             ax = plt.gca()
 
-        _, D, sparse = self.get_map(content='dist_map', fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution)
+        _, D, sparse = self.get_map(content=content, fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution, threshold=threshold)
         CMAP = colormaps[cmap]
         ax.imshow(D, cmap=cmap, extent=[0, 1, 0, 1])  
 
@@ -753,7 +826,9 @@ class MapBuilder:
             case 'label_roundtrip':
                 ax, sparse = self.plot_decision_map(ax=ax, fast=fast, grid=grid, content='label_roundtrip', proba=False, initial_resolution=B)
             case 'dist_map':
-                ax, sparse = self.plot_dist_map(ax=ax, fast=fast, grid=grid)
+                ax, sparse = self.plot_dist_map(ax=ax, fast=fast, grid=grid, content='dist_map')
+            case 'nearest':
+                ax, sparse = self.plot_dist_map(ax=ax, fast=fast, grid=grid, content='nearest')
             case _:
                 raise ValueError('content should be one of the following: label, gradient, boundary, label_roundtrip, dist_map')
 
