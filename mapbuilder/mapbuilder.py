@@ -274,7 +274,7 @@ class MapBuilder:
         return dist.flatten()
     
     
-    def get_map(self, content:str='label', fast_strategy:bool=False, resolution: int=128, interpolation_method: str='linear', initial_resolution:int=32, threshold=0.05) -> tuple:
+    def get_map(self, content:str='label', fast_strategy:bool=False, resolution: int=128, interpolation_method: str='linear', initial_resolution:int=32, threshold=0.2) -> tuple:
         if not fast_strategy:
             print('slow strategy')
             xx, yy = self.make_meshgrid(grid=resolution)
@@ -289,7 +289,7 @@ class MapBuilder:
                     main, conf = self.get_label_roundtrip(XY)
                 case 'gradient':
                     conf =  self.get_gradient_new(grid=resolution)
-                case 'dist_map':
+                case 'dist_map' | 'dist_map_general':
                     conf = self.get_deepfool(XY)
                 case 'nearest':
                     self.nnsearcher = NearestNeighbors(n_neighbors=1).fit(self.X)
@@ -314,6 +314,8 @@ class MapBuilder:
                     main, conf, sparse =  self.get_fastmap_general(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content, threshold=threshold)
                 case 'dist_map':
                     main, conf, sparse = self.get_fastmap(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content)
+                case 'dist_map_general':
+                    main, conf, sparse = self.get_fastmap_general(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content, threshold=threshold)
                 case 'gradient_reduced':
                     self.nd_sparse = dict()
                     main, conf, sparse =  self.get_fastmap_general(resolution=resolution, computational_budget=None, interpolation_method=interpolation_method, initial_resolution=initial_resolution, content=content, threshold=threshold)
@@ -395,7 +397,7 @@ class MapBuilder:
             for (w, h, i, j) in items:
                 
                 if w == 1 and h == 1:   ## reached the smallest window
-                    single_points_space.append((i / resolution, j / resolution))
+                    single_points_space.append(((i+0.0) / resolution, (j+0.0) / resolution))
                     single_points_indices.append((int(i), int(j)))
                     continue
                 
@@ -440,7 +442,8 @@ class MapBuilder:
             # fill the new image with the single points  #### Isn't this already done in the previous loop?  
             #### neet to switch x and y
             for i in range(len(single_points_indices)):
-                img[single_points_indices[i]] = single_points_labels[i]  ### out of index sometimes
+                ind_x, ind_y = single_points_indices[i]
+                img[ind_x, ind_y] = single_points_labels[i]  ### out of index sometimes
                 confidence_map.append((single_points_indices[i][0], single_points_indices[i][1], single_points_confidence[i], single_points_labels[i], 1, 1))
 
             # update the priority queue
@@ -735,7 +738,7 @@ class MapBuilder:
                     linewidths=1, colors="k", antialiased=True)
         return ax, sparse
     
-    def plot_dist_map(self, ax=None, cmap='viridis', grid=200, fast=False, initial_resolution=32, content='dist_map', threshold=0.1):
+    def plot_dist_map(self, ax=None, cmap='viridis', grid=200, fast=False, initial_resolution=32, content='dist_map', threshold=0.1, plot_boundary=False, plot_mean=False):
         """Plot probability map for the classifier
         """
         if ax is None:
@@ -745,12 +748,14 @@ class MapBuilder:
         CMAP = colormaps[cmap]
         ax.imshow(D, cmap=cmap, extent=[0, 1, 0, 1])  
 
-        ax.text(0.1, 0.9, f'{np.mean(D):.4f}', fontsize=12, color='w', ha='center', va='center')
+        if plot_mean:
+            ax.text(0.1, 0.9, f'{np.mean(D):.4f}', fontsize=12, color='w', ha='center', va='center')
         ax.set_xticks([])
         ax.set_yticks([])
         # aspect square
         # ax.set_aspect('equal')
-        ax = self.plot_boundary(ax=ax, fast=fast, grid=grid)
+        if plot_boundary:
+            ax = self.plot_boundary(ax=ax, fast=fast, grid=grid)
         
         return ax, sparse
     
