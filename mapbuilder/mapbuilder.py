@@ -647,7 +647,7 @@ class MapBuilder:
                 values = self.get_gradient_map_general(space2d)
             case 'gradient_reduced':
                 values = self.get_gradient_map_reduced(space2d)
-            case 'dist_map':
+            case 'dist_map' | 'dist_map_general':
                 values = self.get_deepfool(space2d)
             case 'nearest':
                 values = self.get_dist2nearest(space2d)
