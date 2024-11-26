@@ -184,7 +184,7 @@ def get_pixel_priority(img, i, j, window_width, window_height, label):
     return 1/cost
 
 @jit
-def get_pixel_priority_general(img, i, j, window_width, window_height, threshold=0.05):
+def get_pixel_priority_general(img, i, j, window_width, window_height, threshold):
     """
        Calculates the priority of decoding a chunk of pixels.
        The chunk is defined by the window size and the pixel coordinates (i,j).
@@ -205,6 +205,7 @@ def get_pixel_priority_general(img, i, j, window_width, window_height, threshold
     h = (window_height - 1)/ 2
     neighbors = []
 
+    neighbors.append(img[int(i), int(j)])
     if i - h - 1 >= 0:
         neighbors.append(img[int(i - h - 1), int(j)])
     if i + h + 1 < resolution:
@@ -219,7 +220,7 @@ def get_pixel_priority_general(img, i, j, window_width, window_height, threshold
     if neighbors.max() == 0:
         print('max is 0!!!!:', neighbors)
         return -1
-    cost = (neighbors.max() - neighbors.min())/ neighbors.max()
+    cost = neighbors.max() - neighbors.min()
     if cost < threshold:
         return -1
     return 1/cost 

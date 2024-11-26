@@ -514,7 +514,7 @@ class MapBuilder:
         # ------------------------------------------------------------
         INITIAL_COMPUTATIONAL_BUDGET = computational_budget = resolution * resolution if computational_budget is None else computational_budget
 
-        indexes, sizes, computational_budget, img, confidence_map = self._fill_initial_windows_general_(
+        indexes, sizes, computational_budget, img, confidence_map, diff = self._fill_initial_windows_general_(
             initial_resolution=initial_resolution, 
             resolution=resolution, 
             computational_budget=computational_budget,
@@ -522,9 +522,11 @@ class MapBuilder:
             content=content,
             )
 
+        threshold_abs = diff * threshold
+        print(f'threshold_abs: {threshold_abs}')
         # analyze the initial points and generate the priority queue
         priority_queue = PriorityQueue()
-        priority_queue = self._update_priority_queue_general_(priority_queue, img, indexes, sizes, threshold=threshold)
+        priority_queue = self._update_priority_queue_general_(priority_queue, img, indexes, sizes, threshold=threshold_abs)
         
         # -------------------------------------
         # start the iterative process of filling the image
@@ -590,7 +592,7 @@ class MapBuilder:
                 confidence_map.append((single_points_indices[i][0], single_points_indices[i][1], single_points_values[i], 1, 1))
 
             # update the priority queue
-            priority_queue = self._update_priority_queue_general_(priority_queue, img, indices, window_sizes, threshold=threshold)
+            priority_queue = self._update_priority_queue_general_(priority_queue, img, indices, window_sizes, threshold=threshold_abs)
 
 
         # generating the confidence image using interpolation based on the confidence map
@@ -616,6 +618,8 @@ class MapBuilder:
         # ------------------------------------------------------------   
         space2d = np.array(indexes) / resolution  
         predicted_values = self.get_content_value_general(content, space2d)
+
+        diff = predicted_values.max() - predicted_values.min()
       
         computational_budget -= len(indexes)
 
@@ -625,7 +629,7 @@ class MapBuilder:
             img[x0:x1 + 1, y0:y1 + 1] = v
             confidence_map.append((x, y, v, w, h))
         
-        return indexes, sizes, computational_budget, img, confidence_map
+        return indexes, sizes, computational_budget, img, confidence_map, diff
 
     def _generate_confidence_border_general_(self, resolution: int, border_indexes, content:str):
         space2d_border = np.array(border_indexes) / resolution
@@ -658,7 +662,7 @@ class MapBuilder:
                 # main, conf = self.get_label_prob(space2d)
         return values
     
-    def _update_priority_queue_general_(self, priority_queue, img, indexes, sizes, threshold=0.05):
+    def _update_priority_queue_general_(self, priority_queue, img, indexes, sizes, threshold):
         for (w, h), (x, y) in zip(sizes, indexes):
             priority = get_pixel_priority_general(img, x, y, w, h, threshold)  ## updated
             if priority != -1:
