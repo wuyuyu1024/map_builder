@@ -16,6 +16,7 @@ from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib import colormaps
+from time import time
 
 from .tools import binary_split, generate_windows, get_pixel_priority, get_tasks_with_same_priority, get_window_borders, get_pixel_priority_general
 from .deepfool_neigbor import Neighbors, deepfool_minibatches, deepfool_batch
@@ -83,9 +84,18 @@ class MapBuilder:
         return xx, yy
     
     def get_nd(self, xy):
-        return self.ppinv.inverse_transform(self.scaler2d.inverse_transform(xy))
+        time0 = time()
+        unscaled = self.scaler2d.inverse_transform(xy)
+        time1 = time()
+        nd = self.ppinv.inverse_transform(unscaled)
+        time2 = time()
+        self.time_acc += time1 - time0
+        self.time_acc2 += time2 - time1
+        self.time_called += 1
+        return nd        
+        # return self.ppinv.inverse_transform(unscaled)
 
-    def get_gradient_map_general(self, xy=None, resolution=200):
+    def get_gradient_map_general(self, xy, resolution):
         """
         for each pixel, the gradient is calculated by
         Dx(y) = (B(y + (w, 0)) - B(y - (w, 0)))/ 2w 
@@ -106,7 +116,7 @@ class MapBuilder:
         gradients = np.sqrt(np.sum(Dx**2, axis=1) + np.sum(Dy**2, axis=1))  
         return gradients
     
-    def get_gradient_map_reduced(self, xy=None, resolution=200):
+    def get_gradient_map_reduced(self, xy, resolution):
         """
         for each pixel, the gradient is calculated by
         Dx(y) = (B(y + (w, 0)) - B(y - (w, 0)))/ 2w 
@@ -246,10 +256,15 @@ class MapBuilder:
         return labels, conf
     
     def get_deepfool(self, xy, labels=None):
+        
         assert isinstance(self.clf, nn.Module)
         device = 'cuda' if next(self.clf.parameters()).is_cuda else 'cpu'
+        time0 = time()
         inverted_grid = self.get_nd(xy)
+        time1 = time()
         inverted_grid = T.tensor(inverted_grid).float().to(device)
+        time2 = time()
+        
         (
             perturbed,
             orig_class,
@@ -260,12 +275,15 @@ class MapBuilder:
             # else 
             deepfool_minibatches(model=self.clf, input_batch=inverted_grid, labels=labels, batch_size=8)
         )
-
+        
         dist_map = (
             T.linalg.norm(inverted_grid - perturbed, dim=-1).detach().cpu().numpy()
         )
         # perturbed = perturbed.cpu().numpy()
         # naive_wormhole_data = naive_wormhole_data.cpu().numpy()
+        
+        # self.time_acc += time1 - time0
+        # self.time_acc2 += time2 - time1
         return dist_map
     
     def get_dist2nearest(self, xy):
@@ -275,6 +293,10 @@ class MapBuilder:
     
     
     def get_map(self, content:str='label', fast_strategy:bool=False, resolution: int=128, interpolation_method: str='linear', initial_resolution:int=32, threshold=0.2) -> tuple:
+        time0 = time()
+        self.time_called = 0
+        self.time_acc = 0
+        self.time_acc2 = 0
         if not fast_strategy:
             print('slow strategy')
             xx, yy = self.make_meshgrid(grid=resolution)
@@ -327,7 +349,10 @@ class MapBuilder:
             main = np.rot90(main, k=1)
             conf = np.rot90(conf, k=1)
             sparse = np.array(sparse)
-        
+        print('time accumulative:', self.time_acc)
+        print('time accumulative2:', self.time_acc2)
+        print('time called:', self.time_called)
+        print('time total:', time()-time0)
         return (main, conf, sparse)
     
 
@@ -354,7 +379,7 @@ class MapBuilder:
         scaled_2d = space2d / resolution
         match content:
             case 'gradient':
-                value = self.get_gradient_map_general(scaled_2d).reshape(-1, 1)
+                value = self.get_gradient_map_general(scaled_2d, resolution=resolution).reshape(-1, 1)
             case 'dist_map':
                 value = self.get_deepfool(scaled_2d, labels).reshape(-1, 1)
             case _:
@@ -512,6 +537,8 @@ class MapBuilder:
         assert(int(initial_resolution) == initial_resolution)    
         assert(initial_resolution < resolution)
         # ------------------------------------------------------------
+        
+        time0 = time()
         INITIAL_COMPUTATIONAL_BUDGET = computational_budget = resolution * resolution if computational_budget is None else computational_budget
 
         indexes, sizes, computational_budget, img, confidence_map, diff = self._fill_initial_windows_general_(
@@ -527,12 +554,16 @@ class MapBuilder:
         # analyze the initial points and generate the priority queue
         priority_queue = PriorityQueue()
         priority_queue = self._update_priority_queue_general_(priority_queue, img, indexes, sizes, threshold=threshold_abs)
+
+        time1 = time()
+        print(f'initial windows time: {time1 - time0}')
         
         # -------------------------------------
         # start the iterative process of filling the image
         # self.console.log(f"Starting the iterative process of refining windows...")
         # self.console.log(f'BINARY SPLIT, interpolation_method: {interpolation_method}')
         # count = 0
+        self.time_acc = 0
         while computational_budget > 0 and not priority_queue.empty():
             # take the highest priority tasks
             items = get_tasks_with_same_priority(priority_queue)
@@ -566,7 +597,10 @@ class MapBuilder:
                 break
 
             # decode the space
-            predicted_values = self.get_content_value_general(content, space)
+            # time2 = time()
+            predicted_values = self.get_content_value_general(content, space, resolution=resolution)
+            # time3 = time()
+            # time_acc += time3 - time2
             
             computational_budget -= len(space)
 
@@ -600,6 +634,7 @@ class MapBuilder:
                                                             resolution=resolution,
                                                             method=interpolation_method).T
 
+        print(f'time_acc: {self.time_acc} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
         return img, img_interpolated, confidence_map
     
     def _fill_initial_windows_general_(self, initial_resolution: int, resolution: int, computational_budget: int, confidence_interpolation_method: str = "linear", content=None):
@@ -617,7 +652,7 @@ class MapBuilder:
 
         # ------------------------------------------------------------   
         space2d = np.array(indexes) / resolution  
-        predicted_values = self.get_content_value_general(content, space2d)
+        predicted_values = self.get_content_value_general(content, space2d, resolution=resolution)
 
         diff = predicted_values.max() - predicted_values.min()
       
@@ -635,11 +670,11 @@ class MapBuilder:
         space2d_border = np.array(border_indexes) / resolution
 
         #####################################3
-        values = self.get_content_value_general(content, space2d_border)
+        values = self.get_content_value_general(content, space2d_border, resolution)
         confidence_map = [(i, j, v, 0, 0) for (i, j), v, in zip(border_indexes, values)]
         return confidence_map
     
-    def get_content_value_general(self, content:str, space2d):
+    def get_content_value_general(self, content:str, space2d, resolution:int):
         conf = None
         match content:
             case 'label':
@@ -648,9 +683,9 @@ class MapBuilder:
                 values, _ = self.get_label_roundtrip(space2d)
             case 'gradient':
                 # main, _ = self.get_label_prob(space2d)
-                values = self.get_gradient_map_general(space2d)
+                values = self.get_gradient_map_general(space2d, resolution=resolution)
             case 'gradient_reduced':
-                values = self.get_gradient_map_reduced(space2d)
+                values = self.get_gradient_map_reduced(space2d, resolution=resolution)
             case 'dist_map' | 'dist_map_general':
                 values = self.get_deepfool(space2d)
             case 'nearest':
@@ -702,7 +737,7 @@ class MapBuilder:
         return interpolate.griddata((X, Y), Z, (xi[None, :], yi[:, None]), method=method)
 
 
-    def plot_gradient_map(self, ax=None, cmap=None, grid=100, fast=False, initial_resolution=32, interpolation_method='linear', threshold=0.1, reduced=False):
+    def plot_gradient_map(self, ax=None, cmap=None, grid=100, fast=False, initial_resolution=32, interpolation_method='linear', threshold=0.1, reduced=False, plot_mean=True):
         """Plot probability map for the classifier
         """
         if ax is None:
@@ -720,7 +755,8 @@ class MapBuilder:
         ax.imshow(D, cmap=CMAP, extent=[0, 1, 0, 1])
 
         ## plot mean of D as text on the plot
-        ax.text(0.1, 0.9, f'{np.mean(D):.4f}', fontsize=12, color='w', ha='center', va='center')  
+        if plot_mean:
+            ax.text(0.1, 0.9, f'{np.mean(D):.4f}', fontsize=12, color='w', ha='center', va='center')  
 
         ax.set_xticks([])
         ax.set_yticks([])
@@ -742,13 +778,13 @@ class MapBuilder:
                     linewidths=1, colors="k", antialiased=True)
         return ax, sparse
     
-    def plot_dist_map(self, ax=None, cmap='viridis', grid=200, fast=False, initial_resolution=32, content='dist_map', threshold=0.1, plot_boundary=False, plot_mean=False):
+    def plot_dist_map(self, ax=None, cmap='viridis', grid=200, fast=False, initial_resolution=32, content='dist_map', threshold=0.2, plot_boundary=False, plot_mean=False):
         """Plot probability map for the classifier
         """
         if ax is None:
             ax = plt.gca()
 
-        _, D, sparse = self.get_map(content=content, fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution, threshold=threshold)
+        _, D, sparse = self.get_map(content=content, fast_strategy=fast, resolution=grid, initial_resolution=initial_resolution, threshold=threshold,)
         CMAP = colormaps[cmap]
         ax.imshow(D, cmap=cmap, extent=[0, 1, 0, 1])  
 

@@ -1,4 +1,6 @@
-
+*.npz
+*.npy
+*/*/withBUG/
 
 figures/
 # Byte-compiled / optimized / DLL files

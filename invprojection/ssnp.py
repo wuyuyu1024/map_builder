@@ -173,11 +173,11 @@ class SSNP():
 
     def transform(self, X):
         if self._is_fit():
-            return self.fwd.predict(X)
+            return self.fwd.predict(X, verbose=0)
            
     def inverse_transform(self, X_2d):
         if self._is_fit():
-            return self.inv.predict(X_2d)
+            return self.inv.predict(X_2d, verbose=0)
 
     def predict(self, X):
         if self._is_fit():

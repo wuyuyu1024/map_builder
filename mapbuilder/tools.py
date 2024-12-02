@@ -88,7 +88,7 @@ def get_proj_error_parallel(indices_source: np.ndarray, indices_embedding: np.nd
             rank_2d += 1
 
         rank_nd = 0
-        while indices_source[rank_nd] != indices_embedding[i]:
+        while indices_source[rank_nd] != indices_embedding[i]:  
             rank_nd += 1
 
         if rank_2d > k:
@@ -223,7 +223,7 @@ def get_pixel_priority_general(img, i, j, window_width, window_height, threshold
     cost = neighbors.max() - neighbors.min()
     if cost < threshold:
         return -1
-    return 1/cost 
+    return 1
 
 
 @njit
