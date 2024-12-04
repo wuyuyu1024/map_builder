@@ -5,11 +5,11 @@ from tqdm import tqdm
 save_dir = f'./results/search_threshold/'
 os.makedirs(save_dir, exist_ok=True)
 # GRID = 256
-# grid_list = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
-grid_list = [256]
+grid_list = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+# grid_list = [256]
 # threshold_list = [0.05, 0.075, 0.1, 1.25, 1.5, 1.75, 0.2, 0.225, 0.25, 0.275, 0.3, 0.4, 0.5]
-threshold_list = [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3, 0.35, 0.4, 0.5, 0.6]
-# threshold_list = [0.15]
+# threshold_list = [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7]
+threshold_list = [0.125]
 
 PPinv_dict = {
     
@@ -49,10 +49,10 @@ for ppinv_name, ppinv in PPinv_dict.items():
 
 
         time_grad_gt = 0
-        time2 = time.time()
-        _, grad_map_gt, _ = mapbuilder.get_map(content='gradient', resolution=GRID, fast_strategy=False)
-        time3 = time.time()
-        time_grad_gt = time3 - time2
+        # time2 = time.time()
+        # _, grad_map_gt, _ = mapbuilder.get_map(content='gradient', resolution=GRID, fast_strategy=False)
+        # time3 = time.time()
+        # time_grad_gt = time3 - time2
 
         time_dist_gt = 0
         # time4 = time.time()
@@ -81,26 +81,26 @@ for ppinv_name, ppinv in PPinv_dict.items():
             error_grad_sq = 0
             sparse_grad = []
 
-            time2 = time.time()
-            _, grad_map, sparse_grad = mapbuilder.get_map(content='gradient', resolution=GRID, fast_strategy=True, threshold=t)
-            time3 = time.time()
-            time_grad = time3 - time2
+            # time2 = time.time()
+            # _, grad_map, sparse_grad = mapbuilder.get_map(content='gradient', resolution=GRID, fast_strategy=True, threshold=t)
+            # time3 = time.time()
+            # time_grad = time3 - time2
 
-            error_grad_abs = np.abs(grad_map_gt - grad_map).mean()
-            error_grad_sq = np.sum((grad_map_gt - grad_map)**2) / np.sum(grad_map_gt**2 )
+            # error_grad_abs = np.abs(grad_map_gt - grad_map).mean()
+            # error_grad_sq = np.sum((grad_map_gt - grad_map)**2) / np.sum(grad_map_gt**2 )
 
             time_grad_reduced = 0
             error_grad_reduced_abs = 0
             error_grad_reduced_sq = 0
             sparse_grad_reduced = []
 
-            time5 = time.time()
-            _, grad_map_reduced, sparse_grad_reduced = mapbuilder.get_map(content='gradient_reduced', resolution=GRID, fast_strategy=True, threshold=t)
-            time6 = time.time()
-            time_grad_reduced = time6 - time5
+            # time5 = time.time()
+            # _, grad_map_reduced, sparse_grad_reduced = mapbuilder.get_map(content='gradient_reduced', resolution=GRID, fast_strategy=True, threshold=t)
+            # time6 = time.time()
+            # time_grad_reduced = time6 - time5
 
-            error_grad_reduced_abs = np.abs(grad_map_gt - grad_map_reduced).mean()
-            error_grad_reduced_sq = np.sum((grad_map_gt - grad_map_reduced)**2) / np.sum(grad_map_gt**2 )
+            # error_grad_reduced_abs = np.abs(grad_map_gt - grad_map_reduced).mean()
+            # error_grad_reduced_sq = np.sum((grad_map_gt - grad_map_reduced)**2) / np.sum(grad_map_gt**2 )
         
         
             time_dist = 0
@@ -122,4 +122,4 @@ for ppinv_name, ppinv in PPinv_dict.items():
                                         'num_sparse_grad_reduced': len(sparse_grad_reduced),
                                         'num_sparse_dist': len(sparse_dist)}, ignore_index=True)
 
-            results.to_csv(f'{save_dir}/search_grid_3_size_{date}.csv', index=False)
+            results.to_csv(f'{save_dir}/new_varygrid_near_t0125_{date}.csv', index=False)

@@ -217,13 +217,13 @@ def get_pixel_priority_general(img, i, j, window_width, window_height, threshold
         neighbors.append(img[int(i), int(j + w + 1)])
 
     neighbors = np.array(neighbors)
-    if neighbors.max() == 0:
+    if neighbors.max() <= 0:
         print('max is 0!!!!:', neighbors)
         return -1
     cost = neighbors.max() - neighbors.min()
     if cost < threshold:
         return -1
-    return 1
+    return 1/window_width
 
 
 @njit

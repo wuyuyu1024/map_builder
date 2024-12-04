@@ -552,8 +552,9 @@ class MapBuilder:
         threshold_abs = diff * threshold
         print(f'threshold_abs: {threshold_abs}')
         # analyze the initial points and generate the priority queue
+        t = np.e**(-1)
         priority_queue = PriorityQueue()
-        priority_queue = self._update_priority_queue_general_(priority_queue, img, indexes, sizes, threshold=threshold_abs)
+        priority_queue = self._update_priority_queue_general_(priority_queue, img, indexes, sizes, threshold=threshold_abs*t)
 
         time1 = time()
         print(f'initial windows time: {time1 - time0}')
@@ -624,9 +625,10 @@ class MapBuilder:
             for i in range(len(single_points_values)):
                 img[single_points_indices[i]] = single_points_values[i]  ### out of index sometimes
                 confidence_map.append((single_points_indices[i][0], single_points_indices[i][1], single_points_values[i], 1, 1))
-
+            
             # update the priority queue
-            priority_queue = self._update_priority_queue_general_(priority_queue, img, indices, window_sizes, threshold=threshold_abs)
+            t = np.e**-(w*initial_resolution/resolution)
+            priority_queue = self._update_priority_queue_general_(priority_queue, img, indices, window_sizes, threshold=threshold_abs * t)
 
 
         # generating the confidence image using interpolation based on the confidence map
