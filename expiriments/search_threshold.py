@@ -2,20 +2,20 @@ from base_cons_p import *
 from tqdm import tqdm
 
 
-save_dir = f'./results/search_threshold/'
+save_dir = f'./results/vary_grid/'
 os.makedirs(save_dir, exist_ok=True)
 # GRID = 256
 # grid_list = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
-grid_list = [256]
+grid_list = [512]
 # threshold_list = [0.05, 0.075, 0.1, 1.25, 1.5, 1.75, 0.2, 0.225, 0.25, 0.275, 0.3, 0.4, 0.5]
 threshold_list = [0.025, 0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275, 0.3, 0.35, 0.4, 0.5, 0.6]
 # threshold_list = [0.15]
 
 PPinv_dict = {
-    
+    "SSNP": SSNP(verbose=0),
     'DBM(UMAP+NNInv)': PPinvWrapper(P=UMAP(n_components=2, random_state=0), Pinv=NNinv_torch()),
     'DBM(t-SNE+NNInv)': PPinvWrapper(P=TSNE(n_components=2, random_state=0), Pinv=NNinv_torch()),
-    "SSNP": SSNP(verbose=0),
+    
     # 'DBM(UMAP+iLAMP)': PPinvWrapper(P=UMAP(n_components=2, random_state=0), Pinv=Pinv_ilamp()),
     # 'DBM(t-SNE+iLAMP)': PPinvWrapper(P=TSNE(n_components=2, random_state=0), Pinv=Pinv_ilamp()),
     # 'DBM(UMAP+RBF)': PPinvWrapper(P=UMAP(n_components=2, random_state=0), Pinv=RBFinv()),
@@ -122,4 +122,4 @@ for ppinv_name, ppinv in PPinv_dict.items():
                                         'num_sparse_grad_reduced': len(sparse_grad_reduced),
                                         'num_sparse_dist': len(sparse_dist)}, ignore_index=True)
 
-            results.to_csv(f'{save_dir}/search_grid_3_size_{date}.csv', index=False)
+            results.to_csv(f'{save_dir}/search_grid_3_size_arch_512_{date}.csv', index=False)

@@ -199,6 +199,8 @@ def get_pixel_priority_general(img, i, j, window_width, window_height, threshold
     Returns:
         priority (float): the priority of decoding the chunk in range [0,1] or -1 if the chunk does not need to be decoded
     """
+    if window_height == 0 or window_width == 0:
+        return -1
     resolution = img.shape[0]
     # getting the 4 neighbors
     w = (window_width - 1) / 2
@@ -220,10 +222,10 @@ def get_pixel_priority_general(img, i, j, window_width, window_height, threshold
     if neighbors.max() <= 0:
         print('max is 0!!!!:', neighbors)
         return -1
-    cost = neighbors.max() - neighbors.min()
-    if cost < threshold:
+    diff = neighbors.max() - neighbors.min()
+    if diff < threshold:
         return -1
-    return 1/window_width
+    return 1/ (max(window_width, window_height))
 
 
 @njit

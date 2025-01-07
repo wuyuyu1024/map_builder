@@ -2,14 +2,16 @@ from base_cons_p import *
 from tqdm import tqdm
 
 
-save_dir = f'./results/search_threshold/'
+save_dir =  f'./results/vary_grid/'
 os.makedirs(save_dir, exist_ok=True)
 # GRID = 256
-grid_list = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+# grid_list = [100, 200, 300, 400, 512, 600, 700, 800, 900, 1024]
+grid_list = 128 * np.array(range(1, 9))
+# grid_list = [64, 128, 256, 512, 1024]
 # grid_list = [256]
 # threshold_list = [0.05, 0.075, 0.1, 1.25, 1.5, 1.75, 0.2, 0.225, 0.25, 0.275, 0.3, 0.4, 0.5]
 # threshold_list = [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7]
-threshold_list = [0.125]
+threshold_list = [0.1]
 
 PPinv_dict = {
     
@@ -122,4 +124,4 @@ for ppinv_name, ppinv in PPinv_dict.items():
                                         'num_sparse_grad_reduced': len(sparse_grad_reduced),
                                         'num_sparse_dist': len(sparse_dist)}, ignore_index=True)
 
-            results.to_csv(f'{save_dir}/new_varygrid_near_t0125_{date}.csv', index=False)
+            results.to_csv(f'{save_dir}/new_varygrid_near_t01_{date}.csv', index=False)
