@@ -33,7 +33,7 @@ for data_name, dataset in datasets_real.items():
         time_gt = time1 - time0
 
         time2 = time.time()
-        label_fast, dist_fast, sparse = mapbuilder.get_map(content='dist_map_general', resolution=GRID, fast_strategy=True, threshold=0.2)
+        label_fast, dist_fast, sparse = mapbuilder.get_map(content='dist_map_general', resolution=GRID, fast_strategy=True, threshold=0.15)
         time3 = time.time()
         time_fast = time3 - time2 
 

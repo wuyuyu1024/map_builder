@@ -84,14 +84,14 @@ class MapBuilder:
         return xx, yy
     
     def get_nd(self, xy):
-        time0 = time()
+        # time0 = time()
         unscaled = self.scaler2d.inverse_transform(xy)
-        time1 = time()
+        # time1 = time()
         nd = self.ppinv.inverse_transform(unscaled)
-        time2 = time()
-        self.time_acc += time1 - time0
-        self.time_acc2 += time2 - time1
-        self.time_called += 1
+        # time2 = time()
+        # self.time_acc += time1 - time0
+        # self.time_acc2 += time2 - time1
+        # self.time_called += 1
         return nd        
         # return self.ppinv.inverse_transform(unscaled)
 
@@ -259,11 +259,11 @@ class MapBuilder:
         
         assert isinstance(self.clf, nn.Module)
         device = 'cuda' if next(self.clf.parameters()).is_cuda else 'cpu'
-        time0 = time()
+        # time0 = time()
         inverted_grid = self.get_nd(xy)
-        time1 = time()
+        # time1 = time()
         inverted_grid = T.tensor(inverted_grid).float().to(device)
-        time2 = time()
+        # time2 = time()
         
         (
             perturbed,
@@ -273,7 +273,7 @@ class MapBuilder:
             # deepfool_batch(self.clf, inverted_grid, labels)
             # if inverted_grid.is_cuda
             # else 
-            deepfool_minibatches(model=self.clf, input_batch=inverted_grid, labels=labels, batch_size=8)
+            deepfool_minibatches(model=self.clf, input_batch=inverted_grid, labels=labels, batch_size=3)
         )
         
         dist_map = (
@@ -293,10 +293,10 @@ class MapBuilder:
     
     
     def get_map(self, content:str='label', fast_strategy:bool=False, resolution: int=128, interpolation_method: str='linear', initial_resolution:int=32, threshold=0.2) -> tuple:
-        time0 = time()
-        self.time_called = 0
-        self.time_acc = 0
-        self.time_acc2 = 0
+        # time0 = time()
+        # self.time_called = 0
+        # self.time_acc = 0
+        # self.time_acc2 = 0
         if not fast_strategy:
             print('slow strategy')
             xx, yy = self.make_meshgrid(grid=resolution)
@@ -349,10 +349,10 @@ class MapBuilder:
             main = np.rot90(main, k=1)
             conf = np.rot90(conf, k=1)
             sparse = np.array(sparse)
-        print('time accumulative:', self.time_acc)
-        print('time accumulative2:', self.time_acc2)
-        print('time called:', self.time_called)
-        print('time total:', time()-time0)
+        # print('time accumulative:', self.time_acc)
+        # print('time accumulative2:', self.time_acc2)
+        # print('time called:', self.time_called)
+        # print('time total:', time()-time0)
         return (main, conf, sparse)
     
 
@@ -538,7 +538,7 @@ class MapBuilder:
         assert(initial_resolution < resolution)
         # ------------------------------------------------------------
         
-        time0 = time()
+        # time0 = time()
         INITIAL_COMPUTATIONAL_BUDGET = computational_budget = resolution * resolution if computational_budget is None else computational_budget
 
         indexes, sizes, computational_budget, img, confidence_map, diff = self._fill_initial_windows_general_(
@@ -556,15 +556,15 @@ class MapBuilder:
         priority_queue = PriorityQueue()
         priority_queue = self._update_priority_queue_general_(priority_queue, img, indexes, sizes, threshold=threshold_abs*t)
 
-        time1 = time()
-        print(f'initial windows time: {time1 - time0}')
+        # time1 = time()
+        # print(f'initial windows time: {time1 - time0}')
         
         # -------------------------------------
         # start the iterative process of filling the image
         # self.console.log(f"Starting the iterative process of refining windows...")
         # self.console.log(f'BINARY SPLIT, interpolation_method: {interpolation_method}')
         # count = 0
-        self.time_acc = 0
+        # self.time_acc = 0
         while computational_budget > 0 and not priority_queue.empty():
             # take the highest priority tasks
             items = get_tasks_with_same_priority(priority_queue)
@@ -636,7 +636,7 @@ class MapBuilder:
                                                             resolution=resolution,
                                                             method=interpolation_method).T
 
-        print(f'time_acc: {self.time_acc} !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
+ 
         return img, img_interpolated, confidence_map
     
     def _fill_initial_windows_general_(self, initial_resolution: int, resolution: int, computational_budget: int, confidence_interpolation_method: str = "linear", content=None):
@@ -739,7 +739,7 @@ class MapBuilder:
         return interpolate.griddata((X, Y), Z, (xi[None, :], yi[:, None]), method=method)
 
 
-    def plot_gradient_map(self, ax=None, cmap=None, grid=100, fast=False, initial_resolution=32, interpolation_method='linear', threshold=0.1, reduced=False, plot_mean=True):
+    def plot_gradient_map(self, ax=None, cmap=None, grid=256, fast=False, initial_resolution=32, interpolation_method='linear', threshold=0.125, reduced=False, plot_mean=True):
         """Plot probability map for the classifier
         """
         if ax is None:
@@ -767,7 +767,7 @@ class MapBuilder:
         return ax, sparse
 
     
-    def plot_boundary(self, ax=None, fast=False, grid=400):
+    def plot_boundary(self, ax=None, fast=False, grid=256):
         """Plot probability map for the classifier
         """
         labels, _, sparse = self.get_map(content='label', fast_strategy=fast, resolution=grid)
@@ -780,7 +780,7 @@ class MapBuilder:
                     linewidths=1, colors="k", antialiased=True)
         return ax, sparse
     
-    def plot_dist_map(self, ax=None, cmap='viridis', grid=200, fast=False, initial_resolution=32, content='dist_map', threshold=0.2, plot_boundary=False, plot_mean=False):
+    def plot_dist_map(self, ax=None, cmap='viridis', grid=256, fast=False, initial_resolution=32, content='dist_map_general', threshold=0.15, plot_boundary=False, plot_mean=False):
         """Plot probability map for the classifier
         """
         if ax is None:
@@ -872,12 +872,12 @@ class MapBuilder:
                 ax, sparse = self.plot_boundary(ax=ax, fast=fast, grid=grid)
             case 'label_roundtrip':
                 ax, sparse = self.plot_decision_map(ax=ax, fast=fast, grid=grid, content='label_roundtrip', proba=False, initial_resolution=B)
-            case 'dist_map':
-                ax, sparse = self.plot_dist_map(ax=ax, fast=fast, grid=grid, content='dist_map')
+            case 'dist_map_general':
+                ax, sparse = self.plot_dist_map(ax=ax, fast=fast, grid=grid, content='dist_map_general')
             case 'nearest':
                 ax, sparse = self.plot_dist_map(ax=ax, fast=fast, grid=grid, content='nearest')
             case _:
-                raise ValueError('content should be one of the following: label, gradient, boundary, label_roundtrip, dist_map')
+                raise ValueError('content should be one of the following: label, gradient, boundary, label_roundtrip, dist_map_general')
 
         return ax, sparse
     
